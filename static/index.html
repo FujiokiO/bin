@@ -66,5 +66,40 @@
     <div id="linenos"></div>
     <pre id="box" style="display: none" class="hljs" tabindex="0"><code></code></pre>
     <textarea spellcheck="false" style="display: none"></textarea>
+
+    <!-- Custom Save Dialog -->
+    <div id="save-dialog" class="modal" style="display: none">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>自定义保存</h3>
+          <span class="close">&times;</span>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="custom-id">自定义文档ID (可选):</label>
+            <input type="text" id="custom-id" placeholder="留空将自动生成ID" maxlength="50">
+            <div class="validation-message" id="id-validation"></div>
+          </div>
+          <div class="help-text">
+            <h4>ID规则说明:</h4>
+            <ul>
+              <li>只能包含字母 (a-z, A-Z)、数字 (0-9) 和连字符 (-)</li>
+              <li>长度限制: 1-50 个字符</li>
+              <li>不能以连字符开头或结尾</li>
+              <li>文档后缀会根据检测到的语言自动添加 (如 .js, .py, .md)</li>
+              <li>如果留空，系统将自动生成安全的随机ID</li>
+            </ul>
+            <div class="examples">
+              <strong>有效示例:</strong> my-document, user123, MyFile<br>
+              <strong>无效示例:</strong> -invalid, file!, my@doc
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="save-confirm" class="btn btn-primary">保存</button>
+          <button id="save-cancel" class="btn btn-secondary">取消</button>
+        </div>
+      </div>
+    </div>
   </body>
 </html>

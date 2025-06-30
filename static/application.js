@@ -54,35 +54,44 @@ haste_document.prototype.load = function(key, callback, lang) {
 };
 
 // Save this document to the server and lock it here
-haste_document.prototype.save = function(data, callback) {
+haste_document.prototype.save = function(data, callback, customId) {
   if (this.locked) {
     return false;
   }
   this.data = data;
   var _this = this;
-  $.ajax('/documents', {
+  
+  // Prepare the request data
+  var requestData = {
+    url: '/documents',
     type: 'post',
     data: data,
     dataType: 'json',
-    contentType: 'text/plain; charset=utf-8',
-    success: function(res) {
-      _this.locked = true;
-      _this.key = res.key;
-      var high = hljs.highlightAuto(data);
-      callback(null, {
-        value: high.value,
-        key: res.key,
-        language: high.language,
-        lineCount: data.split('\n').length
-      });
-    },
-    error: function(res) {
-      try {
-        callback($.parseJSON(res.responseText));
-      }
-      catch (e) {
-        callback({message: 'Something went wrong!'});
-      }
+    contentType: 'text/plain; charset=utf-8'
+  };
+  
+  // If custom ID is provided, add it to the request
+  if (customId && customId.trim()) {
+    requestData.url = '/documents/' + encodeURIComponent(customId.trim());
+    requestData.type = 'put';
+  }
+  
+  $.ajax(requestData).done(function(res) {
+    _this.locked = true;
+    _this.key = res.key;
+    var high = hljs.highlightAuto(data);
+    callback(null, {
+      value: high.value,
+      key: res.key,
+      language: high.language,
+      lineCount: data.split('\n').length
+    });
+  }).fail(function(res) {
+    try {
+      callback($.parseJSON(res.responseText));
+    }
+    catch (e) {
+      callback({message: 'Something went wrong!'});
     }
   });
 };
@@ -108,6 +117,69 @@ var haste = function(appName, options) {
 haste.prototype.setTitle = function(ext) {
   var title = ext ? this.appName + ' - ' + ext : this.appName;
   document.title = title;
+};
+
+// Validate custom document ID
+haste.prototype.validateDocumentId = function(id) {
+  if (!id || !id.trim()) {
+    return { valid: true, message: '' }; // Empty is valid (will auto-generate)
+  }
+  
+  id = id.trim();
+  
+  // Check length
+  if (id.length > 50) {
+    return { valid: false, message: 'ID 长度不能超过50个字符' };
+  }
+  
+  // Check valid characters (letters, numbers, hyphens)
+  if (!/^[a-zA-Z0-9-]+$/.test(id)) {
+    return { valid: false, message: '只能包含字母、数字和连字符' };
+  }
+  
+  // Check not starting or ending with hyphen
+  if (id.startsWith('-') || id.endsWith('-')) {
+    return { valid: false, message: '不能以连字符开头或结尾' };
+  }
+  
+  return { valid: true, message: 'ID 有效' };
+};
+
+// Show custom save dialog
+haste.prototype.showSaveDialog = function() {
+  var _this = this;
+  var $dialog = $('#save-dialog');
+  var $customId = $('#custom-id');
+  var $validation = $('#id-validation');
+  var $saveBtn = $('#save-confirm');
+  
+  // Reset form
+  $customId.val('');
+  $validation.text('').removeClass('error success');
+  $saveBtn.prop('disabled', false);
+  
+  // Show dialog
+  $dialog.show();
+  $customId.focus();
+  
+  // Real-time validation
+  $customId.off('input').on('input', function() {
+    var validation = _this.validateDocumentId($(this).val());
+    $validation.text(validation.message);
+    
+    if (validation.valid) {
+      $validation.removeClass('error').addClass('success');
+      $saveBtn.prop('disabled', false);
+    } else {
+      $validation.removeClass('success').addClass('error');
+      $saveBtn.prop('disabled', true);
+    }
+  });
+};
+
+// Hide custom save dialog
+haste.prototype.hideSaveDialog = function() {
+  $('#save-dialog').hide();
 };
 
 // Show a message box
@@ -158,37 +230,6 @@ haste.prototype.newDocument = function(hideHistory) {
     this.focus();
   });
   this.removeLineNumbers();
-};
-
-// Display a dialog prompting the user to enter a filename
-haste.prototype.showSaveDialog = function(callback) {
-  var filename = prompt("Enter a filename for this document (alphanumeric characters and underscores only, including extension):", this.doc.key + '.' + this.lookupExtensionByType(this.doc.language));
-  if (filename !== null) {
-    // Validate filename (alphanumeric, underscores, and extension)
-    if (/^[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)?$/.test(filename)) {
-      callback(filename);
-    } else {
-      this.showMessage("Invalid filename. Please use alphanumeric characters, underscores, and include a valid extension (e.g., .txt, .js).", 'error');
-    }
-  }
-};
-
-// Save the document with the user-specified filename
-haste.prototype.saveDocumentWithFilename = function(filename) {
-  var _this = this;
-  this.doc.save(this.$textarea.val(), function(err, ret) {
-    if (err) {
-      _this.showMessage(err.message, 'error');
-    } else if (ret) {
-      _this.$code.html(ret.value);
-      _this.setTitle(filename); // Use the user-provided filename
-      window.history.pushState(null, _this.appName + '-' + filename, '/' + filename); // Update URL with filename
-      _this.fullKey();
-      _this.$textarea.val('').hide();
-      _this.$box.show().focus();
-      _this.addLineNumbers(ret.lineCount);
-    }
-  }, filename); // Pass the filename to the save function
 };
 
 // Map of common extensions
@@ -268,6 +309,45 @@ haste.prototype.duplicateDocument = function() {
 // Lock the current document
 haste.prototype.lockDocument = function() {
   var _this = this;
+  this.showSaveDialog();
+  
+  // Handle save confirmation
+  $('#save-confirm').off('click').on('click', function() {
+    var customId = $('#custom-id').val().trim();
+    var validation = _this.validateDocumentId(customId);
+    
+    if (!validation.valid) {
+      return;
+    }
+    
+    _this.hideSaveDialog();
+    _this.performSave(customId || null);
+  });
+  
+  // Handle cancel
+  $('#save-cancel, .close').off('click').on('click', function() {
+    _this.hideSaveDialog();
+  });
+  
+  // Handle ESC key
+  $(document).off('keydown.saveDialog').on('keydown.saveDialog', function(e) {
+    if (e.keyCode === 27) { // ESC key
+      _this.hideSaveDialog();
+      $(document).off('keydown.saveDialog');
+    }
+  });
+  
+  // Handle click outside modal
+  $('#save-dialog').off('click').on('click', function(e) {
+    if (e.target === this) {
+      _this.hideSaveDialog();
+    }
+  });
+};
+
+// Perform the actual save operation
+haste.prototype.performSave = function(customId) {
+  var _this = this;
   this.doc.save(this.$textarea.val(), function(err, ret) {
     if (err) {
       _this.showMessage(err.message, 'error');
@@ -285,7 +365,7 @@ haste.prototype.lockDocument = function() {
       _this.$box.show().focus();
       _this.addLineNumbers(ret.lineCount);
     }
-  });
+  }, customId);
 };
 
 haste.prototype.configureButtons = function() {
