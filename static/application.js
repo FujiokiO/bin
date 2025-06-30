@@ -160,6 +160,37 @@ haste.prototype.newDocument = function(hideHistory) {
   this.removeLineNumbers();
 };
 
+// Display a dialog prompting the user to enter a filename
+haste.prototype.showSaveDialog = function(callback) {
+  var filename = prompt("Enter a filename for this document (alphanumeric characters and underscores only, including extension):", this.doc.key + '.' + this.lookupExtensionByType(this.doc.language));
+  if (filename !== null) {
+    // Validate filename (alphanumeric, underscores, and extension)
+    if (/^[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)?$/.test(filename)) {
+      callback(filename);
+    } else {
+      this.showMessage("Invalid filename. Please use alphanumeric characters, underscores, and include a valid extension (e.g., .txt, .js).", 'error');
+    }
+  }
+};
+
+// Save the document with the user-specified filename
+haste.prototype.saveDocumentWithFilename = function(filename) {
+  var _this = this;
+  this.doc.save(this.$textarea.val(), function(err, ret) {
+    if (err) {
+      _this.showMessage(err.message, 'error');
+    } else if (ret) {
+      _this.$code.html(ret.value);
+      _this.setTitle(filename); // Use the user-provided filename
+      window.history.pushState(null, _this.appName + '-' + filename, '/' + filename); // Update URL with filename
+      _this.fullKey();
+      _this.$textarea.val('').hide();
+      _this.$box.show().focus();
+      _this.addLineNumbers(ret.lineCount);
+    }
+  }, filename); // Pass the filename to the save function
+};
+
 // Map of common extensions
 // Note: this list does not need to include anything that IS its extension,
 // due to the behavior of lookupTypeByExtension and lookupExtensionByType
